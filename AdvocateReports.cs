@@ -1,0 +1,181 @@
+﻿using RestSharp;
+using System;
+using System.Data;
+using System.IO;
+using System.ServiceModel;
+using System.Text;
+using System.Threading;
+using System.Xml;
+
+namespace AdvocateAPI
+{
+    public class AdvocateReports
+    {
+        /// <summary>
+        /// The username to access Advocate's API
+        /// </summary>
+        public string APIUserName { get; set; }
+        /// <summary>
+        /// The password to access Advovate's API
+        /// </summary>
+        public string APIPassword { get; set; }
+
+        /// <summary>
+        /// The Get Report XML request XML to be sent to the server
+        /// </summary>
+        public string GetReportXMLRequestBody { get; set; }
+        /// <summary>
+        /// The Run Report XML request XML to be sent to the server
+        /// </summary>
+        public string RunReportXMLRequestBody { get; set; }
+        /// <summary>
+        /// The Check Report Status XML request XML to be sent to the server
+        /// </summary>
+        public string CheckReportStatusXMLRequestBody { get; set; }
+
+
+        private readonly RestClient client;
+
+        /// <summary>
+        /// The wait time between tries in millisecons. After the report is executed, it takes some time to finish. we need to check if the report finished executing to be able to get the data.
+        /// </summary>
+        public int sleepBetweenTries { get; set; }
+        /// <summary>
+        /// The max number of tries. After the report is executed, it takes some time to finish. we need to check if the report finished executing to be able to get the data.
+        /// </summary>
+        public int maxTries { get; set; }
+
+        /// <summary>
+        /// The Server API url, this is set when the AdvocateReports object instance is created.
+        /// </summary>
+        private Uri _APIUrl;
+
+        /// <summary>
+        /// A read only parameter containing the API call client
+        /// </summary>
+        public RestClient Client
+        {
+            get { return client; }
+        }
+
+        public XmlDocument GetReport(string reportID)
+        {
+            //Initializing variables
+            var tries = 0;
+
+            //Running the report
+            var RunID = RunReport(reportID).InnerText;
+
+            //Checking if the report finished running
+            while (tries <= maxTries)
+            {
+                //Giving it time to run
+                Thread.Sleep(sleepBetweenTries);
+
+                //Checking the Status of the report
+                var reportStatus = CheckReportStatus(RunID).InnerText;
+
+                if (reportStatus == "complete")
+                {
+                    return GetReportData(RunID);
+                }
+            }
+
+            if (tries > maxTries)
+            {
+                var msg = string.Format("The Advocate report (ID {0}) never was completed", reportID);
+                //Log(msg);
+                throw new Exception(msg);
+            }
+        }
+
+        public AdvocateReports(Uri APIUrl)
+        {
+            _APIUrl = APIUrl;
+            client = new RestClient(APIUrl);
+        }
+
+        /// <summary>
+        /// Executes a new version of the report on advocate
+        /// </summary>
+        /// <param name="ReportID"></param>
+        /// <returns>The ID of the instance of the report on Advocate's server</returns>
+        public XmlDocument RunReport(string ReportID)
+        {
+            var body = RunReportXMLRequestBody.Replace("{ReportID}", ReportID) ;
+            var request = PrepareRequest(Method.POST, body);
+            var response = client.Execute(request).Content;
+            return StringToXML(response);
+        }
+
+        /// <summary>
+        /// Returns the report status from the server
+        /// </summary>
+        /// <param name="RunID">The if of the report</param>
+        /// <returns>a string containing the status of the running report</returns>
+        public XmlDocument CheckReportStatus(string RunID)
+        {
+            //Prepare Request
+            var body = CheckReportStatusXMLRequestBody.Replace("{RunID}", RunID);
+            var request = PrepareRequest(Method.POST, body);
+            
+            //Getting data from the server
+            var response = client.Execute(request).Content;
+
+            //Returning the response
+            return StringToXML(response);
+        }
+
+        /// <summary>
+        /// Gets the report's data from Advocate
+        /// </summary>
+        /// <param name="RunID">The ID returned by the RunReport function</param>
+        /// <returns>an XML document containing the data returned from the server</returns>
+        public XmlDocument GetReportData(string RunID)
+        {
+            //Prepare Request
+            var body = GetReportXMLRequestBody.Replace("{RunID}", RunID);
+            var request = PrepareRequest(Method.POST, body);
+
+            //Getting data from the server
+            var response = client.Execute(request).Content;
+
+            //Returning the response
+            return StringToXML(response);
+        }
+
+        private XmlDocument StringToXML(string str)
+        {
+            var xml = new XmlDocument();
+            xml.LoadXml(str);
+            return xml;
+        }
+
+        /// <summary>
+        /// Prepares the necessary headers for the API request
+        /// </summary>
+        /// <param name="method">Specifies the method used for the API call</param>
+        /// <param name="requestBody">the body content to be sent with the request</param>
+        /// <returns></returns>
+        public RestRequest PrepareRequest(Method method, string requestBody)
+        {
+            var EncodedAuthorization = Convert.ToBase64String(Encoding.GetEncoding("ISO-8859-1").GetBytes($"{APIUserName}:{APIPassword}"));
+            var request = new RestRequest(method);
+            var encoding = new ASCIIEncoding();
+            var bodyBytes = encoding.GetBytes(requestBody);
+            request.AddHeader("Content-Length", bodyBytes.Length.ToString());
+            request.AddHeader("cache-control", "no-cache");
+            request.AddHeader("Connection", "keep-alive");
+            request.AddHeader("Accept-Encoding", "gzip, deflate");
+            request.AddHeader("Cache-Control", "no-cache");
+            request.AddHeader("Authorization", $"Basic {EncodedAuthorization}");
+            request.AddHeader("Content-Type", "text/xml");
+            request.AddHeader("Accept", "application/json");
+            request.AddHeader("Host", _APIUrl.Host);
+            request.AddParameter("undefined", requestBody , ParameterType.RequestBody);
+            return request;
+        }
+
+    }
+
+}
