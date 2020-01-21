@@ -1,5 +1,6 @@
 ﻿using RestSharp;
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.ServiceModel;
@@ -9,7 +10,7 @@ using System.Xml;
 
 namespace AdvocateAPI
 {
-    public class AdvocateReports
+    public class AdvocateReport
     {
         /// <summary>
         /// The username to access Advocate's API
@@ -19,6 +20,11 @@ namespace AdvocateAPI
         /// The password to access Advovate's API
         /// </summary>
         public string APIPassword { get; set; }
+
+        /// <summary>
+        /// Base64 Encoded Authorization. The string needs to be in the format {User}:{Password}
+        /// </summary>
+        public string Authorization { get; set; }
 
         /// <summary>
         /// The Get Report XML request XML to be sent to the server
@@ -58,7 +64,13 @@ namespace AdvocateAPI
             get { return client; }
         }
 
-        public XmlDocument GetReport(string reportID)
+
+        /// <summary>
+        /// Gets the report's data from Advocate
+        /// </summary>
+        /// <param name="reportID">The ID of the report to get the data for</param>
+        /// <returns>a Json String with the content of the report</returns>
+        public List<Dictionary<string,string>> GetReport(string reportID)
         {
             //Initializing variables
             var tries = 0;
@@ -70,26 +82,31 @@ namespace AdvocateAPI
             while (tries <= maxTries)
             {
                 //Giving it time to run
-                Thread.Sleep(sleepBetweenTries);
+                if (tries > 0) Thread.Sleep(sleepBetweenTries);
 
                 //Checking the Status of the report
                 var reportStatus = CheckReportStatus(RunID).InnerText;
 
                 if (reportStatus == "complete")
                 {
-                    return GetReportData(RunID);
+                    var xmlData = GetReportData(RunID);
+                    var stringData = xmlData.InnerText;
+                    return Utilities.CSVToList(stringData);
                 }
             }
 
+            //Error if the max tries are reached
             if (tries > maxTries)
             {
                 var msg = string.Format("The Advocate report (ID {0}) never was completed", reportID);
                 //Log(msg);
                 throw new Exception(msg);
             }
+
+            return null;
         }
 
-        public AdvocateReports(Uri APIUrl)
+        public AdvocateReport(Uri APIUrl)
         {
             _APIUrl = APIUrl;
             client = new RestClient(APIUrl);
@@ -159,7 +176,14 @@ namespace AdvocateAPI
         /// <returns></returns>
         public RestRequest PrepareRequest(Method method, string requestBody)
         {
-            var EncodedAuthorization = Convert.ToBase64String(Encoding.GetEncoding("ISO-8859-1").GetBytes($"{APIUserName}:{APIPassword}"));
+
+            
+
+            var EncodedAuthorization = string.Empty;
+            
+            if(string.IsNullOrEmpty(Authorization)) EncodedAuthorization = 
+                    Convert.ToBase64String(Encoding.GetEncoding("ISO-8859-1").GetBytes($"{APIUserName}:{APIPassword}"));
+
             var request = new RestRequest(method);
             var encoding = new ASCIIEncoding();
             var bodyBytes = encoding.GetBytes(requestBody);
