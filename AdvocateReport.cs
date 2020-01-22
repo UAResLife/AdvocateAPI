@@ -1,9 +1,6 @@
 ﻿using RestSharp;
 using System;
 using System.Collections.Generic;
-using System.Data;
-using System.IO;
-using System.ServiceModel;
 using System.Text;
 using System.Threading;
 using System.Xml;
@@ -63,14 +60,33 @@ namespace AdvocateAPI
         {
             get { return client; }
         }
-
+        /// <summary>
+        /// Gets the report's data from Advocate
+        /// </summary>
+        /// <param name="reportID">The ID of the report to get the data for</param>
+        /// <returns>A string with the content of the report</returns>
+        public string GetReportAsText(string reportID)
+        {
+            return GetReportDataString(reportID);
+        }
 
         /// <summary>
         /// Gets the report's data from Advocate
         /// </summary>
         /// <param name="reportID">The ID of the report to get the data for</param>
-        /// <returns>a Json String with the content of the report</returns>
-        public List<Dictionary<string,string>> GetReport(string reportID)
+        /// <returns>A list object representing the content of the report</returns>
+        public List<Dictionary<string,string>> GetReportAsList(string reportID)
+        {
+            var data = GetReportDataString(reportID);
+            return Utilities.CSVToList(data);
+        }
+
+        /// <summary>
+        /// Gets the report's data from Advocate
+        /// </summary>
+        /// <param name="reportID">The ID of the report to get the data for</param>
+        /// <returns>a string with the content of the report</returns>
+        private string GetReportDataString(string reportID)
         {
             //Initializing variables
             var tries = 0;
@@ -90,8 +106,7 @@ namespace AdvocateAPI
                 if (reportStatus == "complete")
                 {
                     var xmlData = GetReportData(RunID);
-                    var stringData = xmlData.InnerText;
-                    return Utilities.CSVToList(stringData);
+                    return xmlData.InnerText;
                 }
             }
 
