@@ -8,6 +8,7 @@ using Newtonsoft.Json.Converters;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Linq;
+using System.Xml;
 
 namespace AdvocateAPI
 {
@@ -36,26 +37,67 @@ namespace AdvocateAPI
 
         }
 
-        public static List<Dictionary<string, string>> CSVToList(string CSV)
+        public static XmlDocument CSVToXML(string CSV)
         {
             Regex regx = new Regex(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"); //Regex to split by comma, unless in quotes.
 
-            var data = new List<Dictionary<string, string>>();
+            XmlDocument doc = new XmlDocument();
+            XmlDeclaration xmlDeclaration = doc.CreateXmlDeclaration("1.0", "UTF-8", null);
+            XmlElement root = doc.DocumentElement;
+            doc.InsertBefore(xmlDeclaration, root);
 
-            var separators = new string[] { "\r\n" };
-            //var lines = CSV.Split(separators, StringSplitOptions.None);
+            XmlElement rootElement = doc.CreateElement(string.Empty, "Report", string.Empty);
+            doc.AppendChild(rootElement);
+
             var lines = Regex.Matches(CSV, @"(?m)^[^""\r\n]*(?:(?:""[^""]*"")+[^""\r\n]*)*")
                 .OfType<Match>()
                 .Select(m => m.Value)
                 .ToArray();
 
-            var h = regx.Split(lines[0]);
+            var headers = regx.Split(lines[0]).Select(m => m.Replace("\"", "")).ToArray();
+            var lines_ = new string[lines.Length - 1];
 
-            var headers = regx.Split(lines[0]).Select(m => m.Replace("\"","")).ToArray();
+
+            Array.Copy(lines, 1, lines_, 0, lines.Length - 1); //To remove the header
+
+            foreach (string line in lines_)
+            {
+                int i = 0;
+
+                XmlElement rowElement = doc.CreateElement(string.Empty, "Row", string.Empty);
+                rootElement.AppendChild(rowElement);
+
+                foreach (var item in regx.Split(line).Select(m => m.Replace("\"", "")))
+                {
+                    
+                    XmlElement colElement = doc.CreateElement(string.Empty,  "Column", string.Empty);
+                    colElement.SetAttribute("Name", headers[i]);
+                    colElement.InnerText = item;
+                    rowElement.AppendChild(colElement);
+                    i++;
+                }
+            }
+
+            return doc;
+        }
+
+        
+
+        public static List<Dictionary<string, string>> CSVToList(string CSV)
+        {
+            var data = new List<Dictionary<string, string>>();
+
+            var lines = Regex.Matches(CSV, @"(?m)^[^""\r\n]*(?:(?:""[^""]*"")+[^""\r\n]*)*")
+                .OfType<Match>()
+                .Select(m => m.Value)
+                .ToArray();
+
+            Regex regx = new Regex(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"); //Regex to split by comma, unless in quotes.
+
+            var headers = regx.Split(lines[0]).Select(m => m.Replace("\"","")).ToArray(); //Gets the headers [0] for first row
             var lines_ = new string[lines.Length-1];
 
-            
-            Array.Copy(lines, 1, lines_, 0, lines.Length-1); //To remove the header
+            Array.Copy(lines, 1, lines_, 0, lines.Length-1); //To remove the header out of lines_
 
             foreach (string line in lines_)
             {

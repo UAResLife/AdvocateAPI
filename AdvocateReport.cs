@@ -1,6 +1,7 @@
 ﻿using RestSharp;
 using System;
 using System.Collections.Generic;
+using System.Runtime.Caching;
 using System.Text;
 using System.Threading;
 using System.Xml;
@@ -9,6 +10,23 @@ namespace AdvocateAPI
 {
     public class AdvocateReport
     {
+        /// <summary>
+        /// Cache Object
+        /// </summary>
+        private readonly ObjectCache cache = MemoryCache.Default;
+
+        private CacheItemPolicy policy;
+
+        public int CacheExpirationHours
+        {
+            set { policy = new CacheItemPolicy { AbsoluteExpiration = DateTimeOffset.Now.AddHours(value)}; }
+        }
+
+        /// <summary>
+        /// If true, the cache memory cache is not used
+        /// </summary>
+        public bool BypassCache { get; set; }
+
         /// <summary>
         /// The username to access Advocate's API
         /// </summary>
@@ -85,9 +103,26 @@ namespace AdvocateAPI
         /// Gets the report's data from Advocate
         /// </summary>
         /// <param name="reportID">The ID of the report to get the data for</param>
-        /// <returns>a string with the content of the report</returns>
-        private string GetReportDataString(string reportID)
+        /// <returns>An XML document representing the content of the report</returns>
+        public XmlDocument GetReportAsXml(string reportID)
         {
+            var data = GetReportDataString(reportID);
+            return Utilities.CSVToXML(data);
+        }
+
+        /// <summary>
+        /// Gets the report's data from Advocate
+        /// </summary>
+        /// <param name="reportID">The ID of the report to get the data for</param>
+        /// <returns>an XML doc</returns>
+        private XmlDocument GetReportXml(string reportID)
+        {
+            //Check if cache exists
+            if (cache.Contains(reportID) && !BypassCache)
+            {
+                return (XmlDocument)cache.Get(reportID);
+            }
+
             //Initializing variables
             var tries = 0;
 
@@ -106,7 +141,8 @@ namespace AdvocateAPI
                 if (reportStatus == "complete")
                 {
                     var xmlData = GetReportData(RunID);
-                    return xmlData.InnerText;
+                    cache.Add(reportID, xmlData, policy);
+                    return xmlData;
                 }
             }
 
@@ -119,6 +155,16 @@ namespace AdvocateAPI
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Gets the report's data from Advocate
+        /// </summary>
+        /// <param name="reportID">The ID of the report to get the data for</param>
+        /// <returns>a string with the content of the report</returns>
+        private string GetReportDataString(string reportID)
+        {
+            return GetReportXml(reportID).InnerText;
         }
 
         public AdvocateReport(Uri APIUrl)
@@ -179,7 +225,15 @@ namespace AdvocateAPI
         private XmlDocument StringToXML(string str)
         {
             var xml = new XmlDocument();
-            xml.LoadXml(str);
+            try
+            {
+                xml.LoadXml(str);
+            }
+            catch
+            {
+                throw new Exception(str);
+            }
+            
             return xml;
         }
 
