@@ -42,7 +42,7 @@ namespace AdvocateAPI
             Regex regx = new Regex(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"); //Regex to split by comma, unless in quotes.
 
             XmlDocument doc = new XmlDocument();
-            XmlDeclaration xmlDeclaration = doc.CreateXmlDeclaration("1.0", "UTF-8", null);
+            XmlDeclaration xmlDeclaration = doc.CreateXmlDeclaration("1.0", "UTF-16", null);
             XmlElement root = doc.DocumentElement;
             doc.InsertBefore(xmlDeclaration, root);
 
@@ -69,10 +69,9 @@ namespace AdvocateAPI
 
                 foreach (var item in regx.Split(line).Select(m => m.Replace("\"", "")))
                 {
-                    
-                    XmlElement colElement = doc.CreateElement(string.Empty,  "Column", string.Empty);
-                    colElement.SetAttribute("Name", headers[i]);
-                    colElement.InnerText = item;
+                    var cleanHeader = headers[i].Replace(":", "-ColonSign-").Replace(' ', '_').Replace("#","-SharpSign-").Replace("/","-ForwardSlashSign-").Replace("(","-OpenParenthesysSign-").Replace(")","-CloseParenthesysSign-").Replace("?","-QuestionMarkSign-");
+                    XmlElement colElement = doc.CreateElement(string.Empty, cleanHeader, string.Empty);
+                    colElement.InnerText = (item == "-" || item == " - " ? "" : item);
                     rowElement.AppendChild(colElement);
                     i++;
                 }
@@ -106,7 +105,7 @@ namespace AdvocateAPI
 
                 foreach (var item in regx.Split(line).Select(m => m.Replace("\"", "")))
                 {
-                    l.Add(headers[i], item);
+                    l.Add(headers[i], (item == "-" || item == " - " ? "" : item));
                     i++;
                 }
 
